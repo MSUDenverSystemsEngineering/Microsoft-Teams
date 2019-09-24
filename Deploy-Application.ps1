@@ -152,7 +152,7 @@ Try {
 
 		## <Perform Post-Installation tasks here>
 		## Install into AppData for the currently logged-in user, without waiting for the next login.
-		Execute-ProcessAsUser -Path '${envProgramFilesX86}\Teams Installer\Teams.exe' -Parameters '--checkInstall --source=default'
+		Execute-ProcessAsUser -Path "${envProgramFilesX86}\Teams Installer\Teams.exe" -Parameters '--checkInstall --source=default'
 
 		## Display a message at the end of the install
 		If (-not $useDefaultMsi) {
@@ -187,8 +187,20 @@ Try {
 		}
 
 		# <Perform Uninstallation tasks here>
-		$exitCode = Remove-MSIApplications -Name 'Teams Machine-Wide Installer' -PassThru
-		If (($exitCode.ExitCode -ne "0") -and ($mainExitCode -ne "3010")) { $mainExitCode = $exitCode.ExitCode }
+
+		## See https://docs.microsoft.com/en-us/microsoftteams/scripts/powershell-script-teams-deployment-clean-up
+		Get-ChildItem -Path "${envSystemDrive}\Users" -Force | Where-Object { $_.PSIsContainer } | ForEach-Object {
+			Write-Log $_.Name.Split('.')[0]
+			$TeamsFolder = $_.FullName + '\AppData\Local\Microsoft\Teams'
+			If ((Test-Path $TeamsFolder) -eq $true) {
+				Write-Log -Message "Uninstalling Teams from ${TeamsFolder}"
+				Execute-ProcessAsUser -UserName $_.Name.Split('.')[0] -Path "${TeamsFolder}\Update.exe" -Parameters '-uninstall -s'
+				Remove-Folder $TeamsFolder
+			}
+		}
+
+		## Removing the MSI has no effect and only removes the entry in Programs and Features.
+		$exitCode = Remove-MSIApplications -Name 'Teams Machine-Wide Installer' -PassThru -ContinueOnError $true
 
 		##*===============================================
 		##* POST-UNINSTALLATION
